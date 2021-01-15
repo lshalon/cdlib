@@ -19,7 +19,7 @@ class Clustering(object):
                 return to_return
         return communities
 
-    def __init__(self, communities, graph, method_name, method_parameters=None, overlap=False):
+    def __init__(self, communities, graph, method_name="", method_parameters=None, overlap=False):
         """
         Communities representation.
 

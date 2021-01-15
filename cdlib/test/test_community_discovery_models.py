@@ -1,6 +1,8 @@
 import unittest
 from cdlib import algorithms
 import networkx as nx
+import itertools
+import random
 import os
 
 
@@ -33,6 +35,20 @@ def get_string_graph():
         node_map[n] = "$%s$" % n
     nx.relabel_nodes(g, node_map, False)
     return g
+
+
+def random_dag(N, P):
+    nodes = [n for n in range(1, N + 1)]
+    G = nx.DiGraph()
+    G.add_nodes_from(nodes)
+    for n1, n2 in itertools.combinations(nodes, 2):
+        p = random.random()
+        if p <= P:
+            if n1 > n2:
+                G.add_edge(n2, n1)
+            else:
+                G.add_edge(n1, n2)
+    return G
 
 
 class CommunityDiscoveryTests(unittest.TestCase):
@@ -166,6 +182,18 @@ class CommunityDiscoveryTests(unittest.TestCase):
                 h.add_edge(e[0], e[1], weight=3)
 
             coms = algorithms.infomap(h)
+            self.assertEqual(type(coms.communities), list)
+            if len(coms.communities) > 0:
+                self.assertEqual(type(coms.communities[0]), list)
+                self.assertEqual(type(coms.communities[0][0]), str)
+            if os.path.exists(".tree"):
+                os.remove(".tree")
+
+            gg = ig.Graph(directed=True)
+            gg.add_vertices([v for v in h.nodes()])
+            gg.add_edges([(u, v) for u, v in h.edges()])
+
+            coms = algorithms.infomap(gg)
             self.assertEqual(type(coms.communities), list)
             if len(coms.communities) > 0:
                 self.assertEqual(type(coms.communities[0]), list)
@@ -390,7 +418,7 @@ class CommunityDiscoveryTests(unittest.TestCase):
 
     def test_agdl(self):
         g = get_string_graph()
-        coms = algorithms.agdl(g, 3, 2, 2, 0.5)
+        coms = algorithms.agdl(g, 3, 2)
         self.assertEqual(type(coms.communities), list)
         if len(coms.communities) > 0:
             self.assertEqual(type(coms.communities[0]), list)
@@ -489,3 +517,103 @@ class CommunityDiscoveryTests(unittest.TestCase):
         if len(coms.communities) > 0:
             self.assertEqual(type(coms.communities[0]), list)
             self.assertEqual(type(coms.communities[0][0]), int)
+
+    def test_chinese_whispers(self):
+        g = get_string_graph()
+
+        communities = algorithms.chinesewhispers(g)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), str)
+
+        g = nx.karate_club_graph()
+
+        communities = algorithms.chinesewhispers(g)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+    def test_wCommunities(self):
+
+        g = get_string_graph()
+        nx.set_edge_attributes(g, values=1, name='weight')
+
+        communities = algorithms.wCommunity(g, min_bel_degree=0.6, threshold_bel_degree=0.6)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+        g = nx.karate_club_graph()
+        nx.set_edge_attributes(g, values=1, name='weight')
+
+        communities = algorithms.wCommunity(g, min_bel_degree=0.6, threshold_bel_degree=0.6)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+    def test_siblinarity_antichain(self):
+
+        g = random_dag(100, 0.1)
+        communities = algorithms.siblinarity_antichain(g, Lambda=1)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+    def test_ga(self):
+
+        g = nx.karate_club_graph()
+
+        communities = algorithms.ga(g)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+    def test_belief(self):
+
+        g = nx.karate_club_graph()
+
+        communities = algorithms.belief(g)
+        self.assertEqual(type(communities.communities), list)
+        if len(communities.communities) > 0:
+            self.assertEqual(type(communities.communities[0]), list)
+            if len(communities.communities[0]) > 0:
+                self.assertEqual(type(communities.communities[0][0]), int)
+
+    def test_CPM_Bipartite(self):
+        g = ig.Graph.Erdos_Renyi(n=80, m=600)
+        g.vs["type"] = 0
+        g.vs[15:]["type"] = 1
+
+        coms = algorithms.CPM_Bipartite(g, 0.3)
+        self.assertEqual(type(coms.communities), list)
+        if len(coms.communities) > 0:
+            self.assertEqual(type(coms.communities[0]), list)
+            self.assertEqual(type(coms.communities[0][0]), int)
+
+        g = nx.algorithms.bipartite.random_graph(50, 50, 0.25)
+        coms = algorithms.CPM_Bipartite(g, 0.3)
+        self.assertEqual(type(coms.communities), list)
+        if len(coms.communities) > 0:
+            self.assertEqual(type(coms.communities[0]), list)
+            self.assertEqual(type(coms.communities[0][0]), int)
+
+    def test_infomap_Bipartite(self):
+        g = nx.algorithms.bipartite.random_graph(300, 100, 0.2)
+        coms = algorithms.infomap_bipartite(g)
+        self.assertEqual(type(coms.communities), list)
+        if len(coms.communities) > 0:
+            self.assertEqual(type(coms.communities[0]), list)
+            self.assertEqual(type(coms.communities[0][0]), int)
+

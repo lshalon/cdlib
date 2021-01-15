@@ -1,17 +1,17 @@
 try:
     import infomap as imp
 except ModuleNotFoundError:
-        imp = None
-        
+    imp = None
+
 try:
     from wurlitzer import pipes
 except ModuleNotFoundError:
-        pipes = None
+    pipes = None
 
 try:
     import igraph as ig
 except ModuleNotFoundError:
-        ig = None
+    ig = None
 
 try:
     import leidenalg
@@ -23,19 +23,25 @@ try:
 except ModuleNotFoundError:
     gt = None
 
-
 from cdlib.algorithms.internal import DER
 import community as louvain_modularity
-
+import warnings
 from collections import defaultdict
 from cdlib import NodeClustering, FuzzyNodeClustering
+from cdlib.algorithms.internal.belief_prop import detect_belief_communities
 from cdlib.algorithms.internal.em import EM_nx
 from cdlib.algorithms.internal.scan import SCAN_nx
 from cdlib.algorithms.internal.GDMP2_nx import GDMP2
 from cdlib.algorithms.internal.AGDL import Agdl
 from cdlib.algorithms.internal.FuzzyCom import fuzzy_comm
 from cdlib.algorithms.internal.Markov import markov
+from cdlib.algorithms.internal.ga import ga_community_detection
+from cdlib.algorithms.internal.SiblinarityAntichain import matrix_node_recursive_antichain_partition
 from karateclub import EdMot
+import markov_clustering as mc
+from chinese_whispers import chinese_whispers as cw
+from chinese_whispers import aggregate_clusters
+
 import networkx as nx
 
 from cdlib.utils import convert_graph_formats, __from_nx_to_graph_tool, affiliations2nodesets, nx_node_integer_mapping
@@ -43,7 +49,7 @@ from cdlib.utils import convert_graph_formats, __from_nx_to_graph_tool, affiliat
 __all__ = ["louvain", "leiden", "rb_pots", "rber_pots", "cpm", "significance_communities", "surprise_communities",
            "greedy_modularity", "der", "label_propagation", "async_fluid", "infomap", "walktrap", "girvan_newman", "em",
            "scan", "gdmp2", "spinglass", "eigenvector", "agdl", "frc_fgsn", "sbm_dl", "sbm_dl_nested",
-           "markov_clustering", "edmot"]
+           "markov_clustering", "edmot", "chinesewhispers", "siblinarity_antichain", "ga", "belief"]
 
 
 def girvan_newman(g_original, level):
@@ -149,7 +155,7 @@ def scan(g_original, epsilon, mu):
     algorithm = SCAN_nx(g, epsilon, mu)
     coms = algorithm.execute()
     return NodeClustering(coms, g_original, "SCAN", method_parameters={"epsilon": epsilon,
-                                                              "mu": mu})
+                                                                       "mu": mu})
 
 
 def gdmp2(g_original, min_threshold=0.75):
@@ -252,19 +258,17 @@ def eigenvector(g_original):
 
     communities = [g.vs[x]['name'] for x in coms]
 
-    return NodeClustering(communities, g_original, "Eigenvector", method_parameters={"":""})
+    return NodeClustering(communities, g_original, "Eigenvector", method_parameters={"": ""})
 
 
-def agdl(g_original, number_communities, number_neighbors, kc, a):
+def agdl(g_original, number_communities, kc):
     """
     AGDL is a graph-based agglomerative algorithm, for clustering high-dimensional data.
     The algorithm uses  the indegree and outdegree to characterize the affinity between two clusters.
 
     :param g_original: a networkx/igraph object
     :param number_communities: number of communities
-    :param number_neighbors: Number of neighbors to use for KNN
     :param kc: size of the neighbor set for each cluster
-    :param a: range(-infinity;+infinty). From the authors: a=np.arange(-2,2.1,0.5)
     :return: NodeClustering object
 
      :Example:
@@ -272,7 +276,7 @@ def agdl(g_original, number_communities, number_neighbors, kc, a):
     >>> from cdlib import algorithms
     >>> import networkx as nx
     >>> G = nx.karate_club_graph()
-    >>> com = algorithms.agdl(g, number_communities=3, number_neighbors=3, kc=4, a=1)
+    >>> com = algorithms.agdl(g, number_communities=3, kc=4)
 
     :References:
 
@@ -283,15 +287,14 @@ def agdl(g_original, number_communities, number_neighbors, kc, a):
 
     g = convert_graph_formats(g_original, nx.Graph)
 
-    communities = Agdl(g, number_communities, number_neighbors, kc, a)
+    communities = Agdl(g, number_communities, kc)
     nodes = {k: v for k, v in enumerate(g.nodes())}
     coms = []
     for com in communities:
         coms.append([nodes[n] for n in com])
 
     return NodeClustering(coms, g_original, "AGDL", method_parameters={"number_communities": number_communities,
-                                                              "number_neighbors": number_neighbors,
-                                                              "kc": kc, "a": a})
+                                                                       "kc": kc})
 
 
 def louvain(g_original, weight='weight', resolution=1., randomize=False):
@@ -335,8 +338,9 @@ def louvain(g_original, weight='weight', resolution=1., randomize=False):
         coms_to_node[c].append(n)
 
     coms_louvain = [list(c) for c in coms_to_node.values()]
-    return NodeClustering(coms_louvain, g_original, "Louvain", method_parameters={"weight": weight, "resolution": resolution,
-                                                                         "randomize": randomize})
+    return NodeClustering(coms_louvain, g_original, "Louvain",
+                          method_parameters={"weight": weight, "resolution": resolution,
+                                             "randomize": randomize})
 
 
 def leiden(g_original, initial_membership=None, weights=None):
@@ -377,7 +381,7 @@ def leiden(g_original, initial_membership=None, weights=None):
                                     )
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "Leiden", method_parameters={"initial_membership": initial_membership,
-                                                                "weights": weights})
+                                                                         "weights": weights})
 
 
 def rb_pots(g_original, initial_membership=None, weights=None, resolution_parameter=1):
@@ -426,8 +430,8 @@ def rb_pots(g_original, initial_membership=None, weights=None, resolution_parame
                                     initial_membership=initial_membership, weights=weights)
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "RB Pots", method_parameters={"initial_membership": initial_membership,
-                                                                 "weights": weights,
-                                                                 "resolution_parameter": resolution_parameter})
+                                                                          "weights": weights,
+                                                                          "resolution_parameter": resolution_parameter})
 
 
 def rber_pots(g_original, initial_membership=None, weights=None, node_sizes=None, resolution_parameter=1):
@@ -474,8 +478,9 @@ def rber_pots(g_original, initial_membership=None, weights=None, node_sizes=None
                                     )
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "RBER Pots", method_parameters={"initial_membership": initial_membership,
-                                                                   "weights": weights, "node_sizes": node_sizes,
-                                                                   "resolution_parameter": resolution_parameter})
+                                                                            "weights": weights,
+                                                                            "node_sizes": node_sizes,
+                                                                            "resolution_parameter": resolution_parameter})
 
 
 def cpm(g_original, initial_membership=None, weights=None, node_sizes=None, resolution_parameter=1):
@@ -530,8 +535,8 @@ def cpm(g_original, initial_membership=None, weights=None, node_sizes=None, reso
                                     weights=weights, node_sizes=node_sizes, )
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "CPM", method_parameters={"initial_membership": initial_membership,
-                                                             "weights": weights, "node_sizes": node_sizes,
-                                                             "resolution_parameter": resolution_parameter})
+                                                                      "weights": weights, "node_sizes": node_sizes,
+                                                                      "resolution_parameter": resolution_parameter})
 
 
 def significance_communities(g_original, initial_membership=None, node_sizes=None):
@@ -575,7 +580,7 @@ def significance_communities(g_original, initial_membership=None, node_sizes=Non
                                     node_sizes=node_sizes)
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "Significance", method_parameters={"initial_membership": initial_membership,
-                                                                      "node_sizes": node_sizes})
+                                                                               "node_sizes": node_sizes})
 
 
 def surprise_communities(g_original, initial_membership=None, weights=None, node_sizes=None):
@@ -622,7 +627,8 @@ def surprise_communities(g_original, initial_membership=None, weights=None, node
                                     weights=weights, node_sizes=node_sizes)
     coms = [g.vs[x]['name'] for x in part]
     return NodeClustering(coms, g_original, "Surprise", method_parameters={"initial_membership": initial_membership,
-                                                                  "weights": weights, "node_sizes": node_sizes})
+                                                                           "weights": weights,
+                                                                           "node_sizes": node_sizes})
 
 
 def greedy_modularity(g_original, weight=None):
@@ -679,9 +685,7 @@ def infomap(g_original):
     if pipes is None:
         raise ModuleNotFoundError("Optional dependency not satisfied: install package wurlitzer to use infomap.")
 
-    g = convert_graph_formats(g_original, nx.Graph)
-
-    g.is_directed()
+    g = convert_graph_formats(g_original, nx.Graph, directed=g_original.is_directed())
 
     g1 = nx.convert_node_labels_to_integers(g, label_attribute="name")
     name_map = nx.get_node_attributes(g1, 'name')
@@ -737,7 +741,7 @@ def walktrap(g_original):
     for c in coms:
         communities.append([g.vs[x]['name'] for x in c])
 
-    return NodeClustering(communities, g_original, "Walktrap", method_parameters={"":""})
+    return NodeClustering(communities, g_original, "Walktrap", method_parameters={"": ""})
 
 
 def label_propagation(g_original):
@@ -770,7 +774,7 @@ def label_propagation(g_original):
     coms = list(nx.algorithms.community.label_propagation_communities(g))
     coms = [list(x) for x in coms]
 
-    return NodeClustering(coms, g_original, "Label Propagation", method_parameters={"":""})
+    return NodeClustering(coms, g_original, "Label Propagation", method_parameters={"": ""})
 
 
 def async_fluid(g_original, k):
@@ -842,7 +846,7 @@ def der(g_original, walk_len=3, threshold=.00001, iter_bound=50):
         coms.append([maps[n] for n in c])
 
     return NodeClustering(coms, g_original, "DER", method_parameters={"walk_len": walk_len, "threshold": threshold,
-                                                                 "iter_bound": iter_bound})
+                                                                      "iter_bound": iter_bound})
 
 
 def frc_fgsn(g_original, theta, eps, r):
@@ -890,10 +894,10 @@ def frc_fgsn(g_original, theta, eps, r):
         coms = [list(c) for c in communities]
 
     return FuzzyNodeClustering(coms, fuzz_assoc, g_original, "FuzzyComm", method_parameters={"theta": theta,
-                                                                                        "eps": eps, "r": r})
+                                                                                             "eps": eps, "r": r})
 
 
-def sbm_dl(g_original, B_min=None,B_max=None, deg_corr=True, **kwargs):
+def sbm_dl(g_original, B_min=None, B_max=None, deg_corr=True, **kwargs):
     """Efficient Monte Carlo and greedy heuristic for the inference of stochastic block models.
 
     Fit a non-overlapping stochastic block model (SBM) by minimizing its description length using an agglomerative heuristic.
@@ -932,11 +936,12 @@ def sbm_dl(g_original, B_min=None,B_max=None, deg_corr=True, **kwargs):
     affiliations = state.get_blocks().get_array()
     affiliations = {label_map[i]: affiliations[i] for i in range(len(affiliations))}
     coms = affiliations2nodesets(affiliations)
-    coms = [list(v) for k,v in coms.items()]
-    return NodeClustering(coms, g_original, "SBM", method_parameters={"B_min": B_min, "B_max": B_max, "deg_corr": deg_corr})
+    coms = [list(v) for k, v in coms.items()]
+    return NodeClustering(coms, g_original, "SBM",
+                          method_parameters={"B_min": B_min, "B_max": B_max, "deg_corr": deg_corr})
 
 
-def sbm_dl_nested(g_original, B_min=None,B_max=None, deg_corr=True, **kwargs):
+def sbm_dl_nested(g_original, B_min=None, B_max=None, deg_corr=True, **kwargs):
     """Efficient Monte Carlo and greedy heuristic for the inference of stochastic block models. (nested)
 
     Fit a nested non-overlapping stochastic block model (SBM) by minimizing its description length using an agglomerative heuristic.
@@ -977,18 +982,84 @@ def sbm_dl_nested(g_original, B_min=None,B_max=None, deg_corr=True, **kwargs):
     affiliations = level0.get_blocks().get_array()
     affiliations = {label_map[i]: affiliations[i] for i in range(len(affiliations))}
     coms = affiliations2nodesets(affiliations)
-    coms = [list(v) for k,v in coms.items()]
-    return NodeClustering(coms, g_original, "SBM_nested", method_parameters={"B_min": B_min, "B_max": B_max, "deg_corr": deg_corr})
+    coms = [list(v) for k, v in coms.items()]
+    return NodeClustering(coms, g_original, "SBM_nested",
+                          method_parameters={"B_min": B_min, "B_max": B_max, "deg_corr": deg_corr})
 
 
-def markov_clustering(g_original,  max_loop=1000):
+def markov_clustering(g_original, expansion=2, inflation=2, loop_value=1, iterations=100, pruning_threshold=0.001,
+                      pruning_frequency=1, convergence_check_frequency=1):
     """
     The Markov clustering algorithm (MCL) is based on simulation of (stochastic) flow in graphs.
     The MCL algorithm finds cluster structure in graphs by a mathematical bootstrapping procedure. The process deterministically computes (the probabilities of) random walks through the graph, and uses two operators transforming one set of probabilities into another. It does so using the language of stochastic matrices (also called Markov matrices) which capture the mathematical concept of random walks on a graph.
     The MCL algorithm simulates random walks within a graph by alternation of two operators called expansion and inflation.
 
     :param g_original: a networkx/igraph object
-    :param max_loop: maximum number of iterations, default 1000
+    :param expansion: The cluster expansion factor
+    :param inflation: The cluster inflation factor
+    :param loop_value: Initialization value for self-loops
+    :param iterations: Maximum number of iterations
+           (actual number of iterations will be less if convergence is reached)
+    :param pruning_threshold: Threshold below which matrix elements will be set set to 0
+    :param pruning_frequency: Perform pruning every 'pruning_frequency'
+           iterations.
+    :param convergence_check_frequency: Perform the check for convergence
+           every convergence_check_frequency iterations
+    :return:  NodeClustering object
+
+    :Example:
+
+    >>> from cdlib import algorithms
+    >>> import networkx as nx
+    >>> G = nx.karate_club_graph()
+    >>> coms = algorithms.markov_clustering(G)
+
+    :References:
+
+    Enright, Anton J., Stijn Van Dongen, and Christos A. Ouzounis. `An efficient algorithm for large-scale detection of protein families. <https://www.ncbi.nlm.nih.gov/pubmed/11917018/>`_ Nucleic acids research 30.7 (2002): 1575-1584.
+
+    .. note:: Reference implementation: https://github.com/GuyAllard/markov_clustering
+    """
+
+    g = convert_graph_formats(g_original, nx.Graph)
+    g, maps = nx_node_integer_mapping(g)
+
+    if maps is not None:
+        matrix = nx.to_scipy_sparse_matrix(g, nodelist=range(len(maps)))
+    else:
+        matrix = nx.to_scipy_sparse_matrix(g)
+
+    result = mc.run_mcl(matrix, expansion=expansion, inflation=inflation, loop_value=loop_value, iterations=iterations,
+                        pruning_threshold=pruning_threshold, pruning_frequency=pruning_frequency,
+                        convergence_check_frequency=convergence_check_frequency)  # run MCL with default parameters
+    clusters = mc.get_clusters(result)
+
+    coms = []
+    if maps is not None:
+        for c in clusters:
+            coms.append([maps[n] for n in c])
+
+        nx.relabel_nodes(g, maps, False)
+    else:
+        coms = [list(c) for c in clusters]
+
+    return NodeClustering(coms, g_original, "Markov Clustering",
+                          method_parameters={'expansion': expansion, 'inflation': inflation, 'loop_value': loop_value,
+                                             'iterations': iterations, 'pruning_threshold': pruning_threshold,
+                                             'pruning_frequency': pruning_frequency,
+                                             'convergence_check_frequency': convergence_check_frequency})
+
+
+def chinesewhispers(g_original, weighting='top', iterations=20, seed=None):
+    """
+
+    Fuzzy graph clustering that (i) creates an intermediate representation of the input graph, which reflects the “ambiguity” of its nodes,
+    and (ii) uses hard clustering to discover crisp clusters in such “disambiguated” intermediate graph.
+
+    :param g_original:
+    :param weighting: edge weighing schemas. Available modalities: ['top', 'lin', 'log']
+    :param iterations: number of iterations
+    :param seed: random seed
     :return: NodeClustering object
 
     :Example:
@@ -996,30 +1067,32 @@ def markov_clustering(g_original,  max_loop=1000):
     >>> from cdlib import algorithms
     >>> import networkx as nx
     >>> G = nx.karate_club_graph()
-    >>> coms = algorithms.markov_clustering(G, max_loop=1000)
+    >>> coms = algorithms.chinesewhispers(G)
 
     :References:
 
-    Enright, Anton J., Stijn Van Dongen, and Christos A. Ouzounis. `An efficient algorithm for large-scale detection of protein families. <https://www.ncbi.nlm.nih.gov/pubmed/11917018/>`_ Nucleic acids research 30.7 (2002): 1575-1584.
+    Ustalov, D., Panchenko, A., Biemann, C., Ponzetto, S.P.: `Watset: Local-Global Graph Clustering with Applications in Sense and Frame Induction.`_  Computational Linguistics 45(3), 423–479 (2019)
 
-    .. note:: Reference implementation: https://github.com/HarshHarwani/markov-clustering-for-graphs
+    .. note:: Reference implementation: https://github.com/nlpub/chinese-whispers-python
     """
 
     g = convert_graph_formats(g_original, nx.Graph)
     g, maps = nx_node_integer_mapping(g)
 
-    communities = markov(g, max_loop)
+    cw(g, weighting=weighting, iterations=iterations, seed=seed)
 
+    coms = []
     if maps is not None:
-        communities = []
-        for c in communities:
-            communities.append([tuple(maps[n]) for n in c])
+        for _, cluster in sorted(aggregate_clusters(g).items(), key=lambda e: len(e[1]), reverse=True):
+            coms.append([maps[n] for n in cluster])
 
         nx.relabel_nodes(g, maps, False)
     else:
-        communities = [list(c) for c in communities]
+        for _, cluster in sorted(aggregate_clusters(g).items(), key=lambda e: len(e[1]), reverse=True):
+            coms.append(list(cluster))
 
-    return NodeClustering(communities, g_original, "Markov Clustering", method_parameters={"max_loop": max_loop})
+    return NodeClustering(coms, g_original, "Chinese Whispers",
+                          method_parameters={'weighting': weighting, 'iterations': iterations})
 
 
 def edmot(g_original, component_count=2, cutoff=10):
@@ -1036,7 +1109,7 @@ def edmot(g_original, component_count=2, cutoff=10):
     >>> from cdlib import algorithms
     >>> import networkx as nx
     >>> G = nx.karate_club_graph()
-    >>> coms = algorithms.markov_clustering(G, max_loop=1000)
+    >>> coms = algorithms.edmot(G, max_loop=1000)
 
     :References:
 
@@ -1058,4 +1131,145 @@ def edmot(g_original, component_count=2, cutoff=10):
 
     coms = [list(c) for c in coms_to_node.values()]
 
-    return NodeClustering(coms, g_original, "EdMot", method_parameters={"component_count": component_count, "cutoff": cutoff})
+    return NodeClustering(coms, g_original, "EdMot",
+                          method_parameters={"component_count": component_count, "cutoff": cutoff})
+
+
+def siblinarity_antichain(g_original, forwards_backwards_on=True, backwards_forwards_on=False,
+                          Lambda=1, with_replacement=False, space_label=None, time_label=None):
+    """
+    The algorithm extract communities from a DAG that (i) respects its intrinsic order and (ii) are composed of similar nodes.
+    The approach takes inspiration from classic similarity measures of bibliometrics, used to assess how similar two publications are, based on their relative citation patterns.
+
+    :param g_original: a networkx/igraph object representing a DAG (directed acyclic graph)
+    :param forwards_backwards_on: checks successors' similarity. Boolean, default True
+    :param backwards_forwards_on: checks predecessors' similarity. Boolean, default True
+    :param Lambda: desired resolution of the partition. Default 1
+    :param with_replacement: If True he similarity of a node to itself is equal to the number of its neighbours based on which the similarity is defined. Boolean, default True.
+    :return: NodeClustering object
+
+    :Example:
+
+    >>> from cdlib import algorithms
+    >>> import networkx as nx
+    >>> G = nx.karate_club_graph()
+    >>> coms = algorithms.siblinarity_antichain(G, Lambda=1)
+
+    :References:
+
+    Vasiliauskaite, V., Evans, T.S. Making communities show respect for order. Appl Netw Sci 5, 15 (2020). https://doi.org/10.1007/s41109-020-00255-5
+
+    .. note:: Reference implementation: https://github.com/vv2246/siblinarity_antichains
+    """
+
+    g = convert_graph_formats(g_original, nx.Graph)
+
+    if not nx.is_directed_acyclic_graph(g):
+        raise Exception("The Siblinarity Antichain algorithm require as input a Directed Acyclic Graph (DAG).")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result_list = matrix_node_recursive_antichain_partition(g, forwards_backwards_on=forwards_backwards_on,
+                                                            backwards_forwards_on=backwards_forwards_on,
+                                                            Q_check_on=True,
+                                                            Lambda=Lambda, with_replacement=with_replacement,
+                                                            space_label=None, time_label=None)
+
+    node_partition = {}
+    for n in g.nodes():
+        p_at_level = result_list[0]["n_to_p"][n]
+        for i in range(1, len(result_list) - 1):
+            p_at_level = result_list[i]["n_to_p"][p_at_level]
+        node_partition[n] = p_at_level
+
+    partition = defaultdict(list)
+    for key, val in node_partition.items():
+        partition[val].append(key)
+
+    coms = [list(c) for c in partition.values()]
+
+    return NodeClustering(coms, g_original, "Siblinarity Antichain",
+                          method_parameters={"forwards_backwards_on": forwards_backwards_on,
+                                             "backwards_forwards_on": backwards_forwards_on,
+
+                                             "Lambda": Lambda,
+                                             "with_replacement": with_replacement,
+                                             "space_label": space_label,
+                                             "time_label": time_label})
+
+
+def ga(g_original, population=300, generation=30, r=1.5):
+    """
+    Genetic based approach to discover communities in social networks.
+    GA optimizes a simple but efficacious fitness function able to identify densely connected groups of nodes with sparse connections between groups.
+
+    :param g_original: a networkx/igraph object
+    :param population:
+    :param generation:
+    :param r:
+    :return: NodeClustering object
+
+    :Example:
+
+    >>> from cdlib import algorithms
+    >>> import networkx as nx
+    >>> G = nx.karate_club_graph()
+    >>> coms = algorithms.ga(G)
+
+    :References:
+
+     Pizzuti, C. (2008). Ga-net: A genetic algorithm for community detection in social networks. In Inter conf on parallel problem solving from nature, pages 1081–1090.Springer.
+
+    .. note:: Reference implementation: https://github.com/hariswb/ga-community-detection
+    """
+
+    g = convert_graph_formats(g_original, nx.Graph)
+    coms = ga_community_detection(g, population, generation, r)
+
+    return NodeClustering(coms, g_original, "ga",
+                          method_parameters={"population": population, "generation": generation, 'r': r})
+
+
+def belief(g_original, max_it=100, eps=0.0001, reruns_if_not_conv=5, threshold=0.005, q_max=7):
+    """
+    Belief community seeks the consensus of many high-modularity partitions.
+    It does this with a scalable message-passing algorithm, derived by treating the modularity as a Hamiltonian and applying the cavity method.
+
+    :param g_original: a networkx/igraph object
+    :param max_it:
+    :param eps:
+    :param reruns_if_not_conv:
+    :param threshold:
+    :param q_max:
+    :return: NodeClustering object
+
+    :Example:
+
+    >>> from cdlib import algorithms
+    >>> import networkx as nx
+    >>> G = nx.karate_club_graph()
+    >>> coms = algorithms.belief(G)
+
+    :References:
+
+    Zhang, Pan, and Cristopher Moore. "Scalable detection of statistically significant communities and hierarchies, using message passing for modularity." Proceedings of the National Academy of Sciences 111.51 (2014): 18144-18149.
+
+    .. note:: Reference implementation: https://github.com/weberfm/belief_propagation_community_detection
+    """
+
+    g = convert_graph_formats(g_original, nx.Graph)
+
+    mapping = {n: i for i, n in enumerate(g.nodes())}
+    inv_map = {v: k for k, v in mapping.items()}
+    g = nx.relabel_nodes(g, mapping)
+
+    coms = detect_belief_communities(g, max_it=max_it, eps=eps, reruns_if_not_conv=reruns_if_not_conv, threshold=threshold, q_max=q_max)
+
+    res = []
+    for com in coms:
+        com = [inv_map[c] for c in com]
+        res.append(com)
+
+    return NodeClustering(res, g_original, "Belief",
+                          method_parameters={"max_it": max_it, "eps": eps, 'reruns_if_not_conv': reruns_if_not_conv,
+                                             "threshold": threshold, "q_max": q_max})
