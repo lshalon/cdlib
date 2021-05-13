@@ -48,7 +48,7 @@ def __gran_embed(core, c, fuzz_d):
     return float(num) / den
 
 
-def fuzzy_comm(graph, theta, eps, r):
+def fuzzy_comm(graph, theta, eps, r, distance):
     """
     Takes adjacency_mat(n*n) , theta , eps (epsilon) , and radius(r)
     and returns an n*c matrix where c is the number of communities and the
@@ -58,6 +58,7 @@ def fuzzy_comm(graph, theta, eps, r):
     :param theta:
     :param eps:
     :param r:
+    :param distance: name on edge to use as distance.
     :return:
     """
 
@@ -70,7 +71,7 @@ def fuzzy_comm(graph, theta, eps, r):
     # gran = [i for i in range(num_vertices)]
 
     # Calculate distance between all vertices
-    dist = list(nx.all_pairs_shortest_path_length(graph))
+    dist = list(nx.shortest_path(graph, weight=distance))
 
     # Membership values between all nodes
     fuzz_d = np.zeros(shape=adjacency_mat.shape).astype(float)
