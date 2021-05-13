@@ -39,7 +39,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 
-setup(name='personal-cdlib',
+setup(name='personalcdlib',
       version='0.1.10',
       license='BSD-Clause-2',
       description='Community Discovery Library',
