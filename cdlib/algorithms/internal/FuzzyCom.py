@@ -96,7 +96,7 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
     num_cores = len(theta_cores)
     # _sum = np.zeroes((fuzz_d.shape[0],))
     # for i in range(fuzz_d
-    _sum = np.zeroes(len(fuzz_d.shape[0]))
+    _sum = np.zeros(len(fuzz_d.shape[0]))
     for i in range(len(_sum)): _sum[i] = fuzz_d[i][theta_cores].sum()
     # _sum = np.sum(fuzz_d[:][theta_cores], axis=1)
     k = 0
