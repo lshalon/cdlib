@@ -879,7 +879,7 @@ def frc_fgsn(g_original, theta, eps, r, distance=None, cutoff=None):
 
     .. note:: Reference implementation: https://github.com/nidhisridhar/Fuzzy-Community-Detection
     """
-
+    print('Calculating frc_fgsn')
     graph = convert_graph_formats(g_original, nx.Graph)
     g, maps = nx_node_integer_mapping(graph)
 
