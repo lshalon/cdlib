@@ -849,7 +849,7 @@ def der(g_original, walk_len=3, threshold=.00001, iter_bound=50):
                                                                       "iter_bound": iter_bound})
 
 
-def frc_fgsn(g_original, theta, eps, r, distance=None):
+def frc_fgsn(g_original, theta, eps, r, distance=None, cutoff=None):
     """Fuzzy-Rough Community Detection on Fuzzy Granular model of Social Network.
 
     FRC-FGSN assigns nodes to communities specifying the probability of each association.
@@ -861,6 +861,7 @@ def frc_fgsn(g_original, theta, eps, r, distance=None):
     :param eps: coupling coefficient of the community. Ranges in [0, 1], small values ensure that only strongly connected node granules are merged togheter.
     :param r: radius of the granule (int)
     :param distance: the parameter on the graph to use for distance
+    :param cutoff: the cutoff to use for dijkstra
     :return: FuzzyNodeClustering object
 
 
@@ -882,7 +883,7 @@ def frc_fgsn(g_original, theta, eps, r, distance=None):
     graph = convert_graph_formats(g_original, nx.Graph)
     g, maps = nx_node_integer_mapping(graph)
 
-    communities, fuzz_assoc = fuzzy_comm(graph, theta, eps, r, distance)
+    communities, fuzz_assoc = fuzzy_comm(graph, theta, eps, r, distance, cutoff)
 
     if maps is not None:
         coms = []
