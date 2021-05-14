@@ -72,13 +72,13 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
     # gran = [i for i in range(num_vertices)]
 
     # Calculate distance between all vertices
-    dist = list(nx.all_pairs_dijkstra(graph, weight=distance, cutoff=cutoff))
+    distances = list(nx.all_pairs_dijkstra(graph, weight=distance, cutoff=cutoff))
     print('Done calculating shortest paths between nodes...')
     
     # Membership values between all nodes
     fuzz_d = np.zeros(shape=adjacency_mat.shape).astype(float)
     for i in range(num_vertices):
-        nid, n_dist = dist[i]
+        nid, n_dist = distances[i]
         for j in graph.nodes():
             if j in n_dist and n_dist[j] <= r:
                 fuzz_d[nid][j] = 1 / float(1 + n_dist[j])
