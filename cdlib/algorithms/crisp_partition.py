@@ -894,6 +894,8 @@ def frc_fgsn(g_original, theta, eps, r, distance=None, cutoff=None):
         fuzz_assoc = {maps[nid]: v for nid, v in fuzz_assoc.items()}
     else:
         coms = [list(c) for c in communities]
+        
+    print(f'Number of communities: {len(coms)}')
 
     return FuzzyNodeClustering(coms, fuzz_assoc, g_original, "FuzzyComm", method_parameters={"theta": theta,
                                                                                              "eps": eps, "r": r})
