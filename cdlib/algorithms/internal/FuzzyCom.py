@@ -93,7 +93,7 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
         if np.sum(fuzz_d[:, i]) >= theta:
             theta_cores.append(i)
         else:
-            print(np.sum(fuzz_id[:, i]))
+            print(np.sum(fuzz_d[:, i]))
     print(f'Number of theta cores {len(theta_cores)}')
     theta_cores = np.array(theta_cores).astype(int)
     num_cores = len(theta_cores)
