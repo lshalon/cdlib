@@ -83,6 +83,9 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
             if j in n_dist and n_dist[j] <= r:
                 fuzz_d[nid][j] = 1 / float(1 + n_dist[j])
     _sum = np.sum(fuzz_d, axis=1)
+    
+    print(f'Sum of fuzz_d {np.sum(fuzz_d)}')
+    print(f'fuzz_d shape: {fuzz_d.shape}, _sum shape: {_sum.shape}')
 
     # Normalization of Membership
     for i in range(num_vertices):
