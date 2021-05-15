@@ -122,7 +122,7 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
     cms = []
     for c in communities:
         cms.append([int(n) for n in c])
-
+    print(f'mid-run, number of communities: {len(cms)}')
     # fuzzy association to communities
     fuzz_assoc = defaultdict(dict)
     for i in range(num_vertices):
