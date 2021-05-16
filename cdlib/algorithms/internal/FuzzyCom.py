@@ -79,7 +79,7 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
     fuzz_d = np.zeros(shape=adjacency_mat.shape).astype(float)
     for i in range(num_vertices):
         nid, n_dist = distances[i]
-        print(n_dist)
+        # print(n_dist)
         for j in graph.nodes():
             if j in n_dist[0] and n_dist[0][j] <= r:
                 # print(f'Adding fuzzy distance: {fuzz_d[nid][j]}')
