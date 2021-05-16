@@ -897,8 +897,7 @@ def frc_fgsn(g_original, theta, eps, r, distance=None, cutoff=None):
         
     print(f'Number of communities: {len(coms)}')
 
-    return FuzzyNodeClustering(coms, fuzz_assoc, g_original, "FuzzyComm", method_parameters={"theta": theta,
-                                                                                             "eps": eps, "r": r})
+    return FuzzyNodeClustering(coms, fuzz_assoc, g_original, "FuzzyComm", method_parameters={"theta": theta, "eps": eps, "r": r}), fuzz_assoc
 
 
 def sbm_dl(g_original, B_min=None, B_max=None, deg_corr=True, **kwargs):
