@@ -83,7 +83,7 @@ def fuzzy_comm(graph, theta, eps, r, distance, cutoff):
         for j in graph.nodes():
             if j in n_dist[0] and n_dist[0][j] <= r:
                 # print(f'Adding fuzzy distance: {fuzz_d[nid][j]}')
-                fuzz_d[nid][j] = 1 / float(1 + n_dist[j])
+                fuzz_d[nid][j] = 1 / float(1 + n_dist[0][j])
     _sum = np.sum(fuzz_d, axis=1)
     
     print(f'Sum of fuzz_d {np.sum(fuzz_d)}')
